@@ -5,6 +5,7 @@ import { api, browserSupabase } from "@/lib/client/guest";
 import { labelForPhase, visibleSeconds } from "@/lib/game/timing";
 import type { PrivatePrompt, RoomSnapshot } from "@/lib/game/types";
 import { LiveStage } from "@/components/LiveStage";
+import { AudioCues } from "@/components/AudioCues";
 
 type RequestError = Error & { status?: number };
 const activePhases = ["countdown", "playing"];
@@ -44,6 +45,17 @@ export function RoomView({ code }: { code: string }) {
     const pollId = window.setInterval(() => void refresh(), 3000);
     return () => { window.clearInterval(clockId); window.clearInterval(pollId); };
   }, [refresh]);
+
+  // Refresh at authoritative phase deadlines as well as on realtime events.
+  const activeDeadline = snapshot?.room.phase === "countdown"
+    ? snapshot.room.countdown_ends_at
+    : snapshot?.room.phase === "playing" ? snapshot.room.round_ends_at : null;
+  useEffect(() => {
+    if (!activeDeadline) return;
+    const delay = Math.max(100, Date.parse(activeDeadline) - (Date.now() + clockOffset) + 120);
+    const timerId = window.setTimeout(() => void refresh(), Math.min(delay, 2147483647));
+    return () => window.clearTimeout(timerId);
+  }, [activeDeadline, clockOffset, refresh]);
 
   const roomId = snapshot?.room.id;
   useEffect(() => {
@@ -174,6 +186,7 @@ export function RoomView({ code }: { code: string }) {
               <span>ROUND {room.round_no || "—"} / {room.total_rounds}</span>
               <span>{labelForPhase(room.phase)}</span>
             </div>
+            <AudioCues phase={room.phase} seconds={seconds} />
             <div className="countdown" aria-live="off">
               {room.phase === "countdown" ? (
                 <><span className="countdown-icon">🚀</span><strong>{seconds}</strong><small>LAUNCH IN</small></>
